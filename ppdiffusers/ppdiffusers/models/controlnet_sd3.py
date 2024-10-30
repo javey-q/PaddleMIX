@@ -20,9 +20,9 @@ import paddle.nn.functional as F
 from paddle.distributed.fleet.utils import recompute
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import FromOriginalControlnetMixin, PeftAdapterMixin
+from ..loaders import FromOriginalControlnetMixin
 from ..models.attention import JointTransformerBlock
-from ..models.attention_processor import Attention, AttentionProcessor, FusedJointAttnProcessor2_0
+from ..models.attention_processor import Attention, AttentionProcessor
 from ..models.modeling_outputs  import Transformer2DModelOutput
 from ..models.modeling_utils import ModelMixin
 from ..utils import (
@@ -89,7 +89,8 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 JointTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
-                    attention_head_dim=self.config.attention_head_dim,
+                    # attention_head_dim=self.config.attention_head_dim,
+                    attention_head_dim=self.inner_dim,
                     context_pre_only=False,
                 )
                 for i in range(num_layers)
@@ -108,11 +109,11 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             patch_size=patch_size,
             in_channels=in_channels + extra_conditioning_channels,
             embed_dim=self.inner_dim,
-            pos_embed_type=None,
+            add_pos_embed=False, # to verify
         )
         self.pos_embed_input = zero_module(pos_embed_input)
 
-        self.gradient_checkpointing = False       
+        self.gradient_checkpointing = False
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
@@ -269,7 +270,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         timestep: paddle.Tensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[paddle.FloatTensor, Transformer2DModelOutput]:
+    ) -> Union[paddle.Tensor, Transformer2DModelOutput]:
         """
         The [`SD3Transformer2DModel`] forward method.
 
@@ -419,8 +420,3 @@ class SD3MultiControlNetModel(ModelMixin):
                 control_block_samples = (tuple(control_block_samples),)
 
         return control_block_samples
-@paddle.no_grad()
-def zero_module(module):
-    for p in module.parameters():
-        p.zero_()
-    return module

@@ -143,6 +143,8 @@ else:
             "GaussianDiffusion_SDEdit",
             "STUNetModel",
             "Vid2VidSTUNet",
+            # new add
+            "SD3ControlNetModel",
         ]
     )
 
@@ -498,6 +500,7 @@ if TYPE_CHECKING or PPDIFFUSERS_SLOW_IMPORT:
             MultiAdapter,
             PaddleInferRuntimeModel,
             PriorTransformer,
+            SD3ControlNetModel,
             SD3Transformer2DModel,
             STUNetModel,
             T2IAdapter,
