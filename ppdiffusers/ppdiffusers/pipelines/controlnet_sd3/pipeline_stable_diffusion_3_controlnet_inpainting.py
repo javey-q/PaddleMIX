@@ -55,17 +55,13 @@ EXAMPLE_DOC_STRING = """
         >>> from ppdiffusers import SD3ControlNetModel
 
         >>> controlnet = SD3ControlNetModel.from_pretrained(
-        ...     "alimama-creative/SD3-Controlnet-Inpainting",  from_diffusers=True, extra_conditioning_channels=1
+        ...     "alimama-creative/SD3-Controlnet-Inpainting", extra_conditioning_channels=1, paddle_dtype=paddle.float16,
         ... )
         >>> pipe = StableDiffusion3ControlNetInpaintingPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-3-medium-diffusers",
         ...     controlnet=controlnet,
-        ...     from_diffusers=True,
         ...     paddle_dtype=paddle.float16,
         ... )
-        >>> pipe.text_encoder.to(paddle.float16)
-        >>> pipe.controlnet.to(paddle.float16)
-
         >>> image = load_image(
         ...     "https://huggingface.co/alimama-creative/SD3-Controlnet-Inpainting/resolve/main/images/dog.png"
         ... )
@@ -631,7 +627,6 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
         height,
         batch_size,
         num_images_per_prompt,
-        device,
         dtype,
         do_classifier_free_guidance=False,
         guess_mode=False,
@@ -664,18 +659,18 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
 
         # Get masked image
         masked_image = image.clone()
-        masked_image[(mask > 0.5).repeat(1, 3, 1, 1)] = -1
+        masked_image[(mask > 0.5).tile((1, 3, 1, 1))] = -1
 
         # Encode to latents
         image_latents = self.vae.encode(masked_image).latent_dist.sample()
         image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-        image_latents = image_latents.to(dtype)
+        image_latents = image_latents.cast(dtype=dtype)
 
         mask = paddle.nn.functional.interpolate(
             mask, size=(height // self.vae_scale_factor, width // self.vae_scale_factor)
         )
         mask = 1 - mask
-        control_image = paddle.concat([image_latents, mask], dim=1)
+        control_image = paddle.concat([image_latents, mask], axis=1)
 
         if do_classifier_free_guidance and not guess_mode:
             control_image = paddle.concat([control_image] * 2)
@@ -1058,7 +1053,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
 
         else:
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
-            latents = latents.to(dtype=self.vae.dtype)
+            latents = latents.cast(dtype=self.vae.dtype)
 
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)

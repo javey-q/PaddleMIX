@@ -52,11 +52,10 @@ EXAMPLE_DOC_STRING = """
         >>> from ppdiffusers.pipelines import StableDiffusion3ControlNetPipeline
         >>> from ppdiffusers import SD3ControlNetModel, SD3MultiControlNetModel
         >>> from ppdiffusers.utils import load_image
-        >>> controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Canny", from_diffusers=True)
+        >>> controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Canny")
         >>> pipe = StableDiffusion3ControlNetPipeline.from_pretrained(
             "stabilityai/stable-diffusion-3-medium-diffusers",
             controlnet=controlnet, 
-            from_diffusers=True,
             paddle_dtype=paddle.float16,
         )
         >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
