@@ -311,7 +311,6 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         return prompt_embeds, pooled_prompt_embeds
 
     # Copied from ppdiffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.encode_prompt
-    # TODO: Without max_sequence_length, lora_scale
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],

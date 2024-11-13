@@ -145,6 +145,7 @@ else:
             "Vid2VidSTUNet",
             # new add
             "SD3ControlNetModel",
+            "SD3MultiControlNetModel",
         ]
     )
 
@@ -503,6 +504,7 @@ if TYPE_CHECKING or PPDIFFUSERS_SLOW_IMPORT:
             PaddleInferRuntimeModel,
             PriorTransformer,
             SD3ControlNetModel,
+            SD3MultiControlNetModel,
             SD3Transformer2DModel,
             STUNetModel,
             T2IAdapter,
