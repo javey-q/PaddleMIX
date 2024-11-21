@@ -91,6 +91,7 @@ class Attention(nn.Layer):
         upcast_softmax: bool = False,
         cross_attention_norm: Optional[str] = None,
         cross_attention_norm_num_groups: int = 32,
+        qk_norm: Optional[str] = None,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
         spatial_norm_dim: Optional[int] = None,
@@ -106,6 +107,10 @@ class Attention(nn.Layer):
         context_pre_only=None,
     ):
         super().__init__()
+
+        # To prevent circular import.
+        from .normalization import  RMSNorm  # FP32LayerNorm, LpNorm
+
         self.inner_dim = dim_head * heads
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
@@ -149,6 +154,28 @@ class Attention(nn.Layer):
         else:
             self.spatial_norm = None
 
+        if qk_norm is None:
+            self.norm_q = None
+            self.norm_k = None
+        # elif qk_norm == "layer_norm":
+        #     self.norm_q = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+        #     self.norm_k = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+        # elif qk_norm == "fp32_layer_norm":
+        #     self.norm_q = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+        #     self.norm_k = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+        # elif qk_norm == "layer_norm_across_heads":
+        #     # Lumina applys qk norm across all heads
+        #     self.norm_q = nn.LayerNorm(dim_head * heads, eps=eps)
+        #     self.norm_k = nn.LayerNorm(dim_head * kv_heads, eps=eps)
+        elif qk_norm == "rms_norm":
+            self.norm_q = RMSNorm(dim_head, eps=eps)
+            self.norm_k = RMSNorm(dim_head, eps=eps)
+        # elif qk_norm == "l2":
+        #     self.norm_q = LpNorm(p=2, dim=-1, eps=eps)
+        #     self.norm_k = LpNorm(p=2, dim=-1, eps=eps)
+        else:
+            raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None,'layer_norm','fp32_layer_norm','rms_norm'")
+        
         if cross_attention_norm is None:
             self.norm_cross = None
         elif cross_attention_norm == "layer_norm":
@@ -924,31 +951,12 @@ class JointAttnProcessor2_5:
     ) -> paddle.Tensor:
         residual = hidden_states
 
-        input_ndim = hidden_states.ndim
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.reshape([batch_size, channel, height * width]).transpose([0, 2, 1])
-        context_input_ndim = encoder_hidden_states.ndim
-        if context_input_ndim == 4:
-            batch_size, channel, height, width = encoder_hidden_states.shape
-            encoder_hidden_states = encoder_hidden_states.reshape([batch_size, channel, height * width]).transpose([0, 2, 1])
-
-        batch_size = encoder_hidden_states.shape[0]
+        batch_size = hidden_states.shape[0]
 
         # `sample` projections.
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
-
-        # `context` projections.
-        encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-        # attention
-        query = paddle.concat([query, encoder_hidden_states_query_proj], axis=1)
-        key = paddle.concat([key, encoder_hidden_states_key_proj], axis=1)
-        value = paddle.concat([value, encoder_hidden_states_value_proj], axis=1)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -956,31 +964,54 @@ class JointAttnProcessor2_5:
         key = key.reshape([batch_size, -1, attn.heads, head_dim])
         value = value.reshape([batch_size, -1, attn.heads, head_dim])
 
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # `context` projections.
+        if encoder_hidden_states is not None:
+            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.reshape([batch_size, -1, attn.heads, head_dim])
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.reshape([batch_size, -1, attn.heads, head_dim])
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.reshape([batch_size, -1, attn.heads, head_dim])
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+            query = paddle.concat([query, encoder_hidden_states_query_proj], axis=1)
+            key = paddle.concat([key, encoder_hidden_states_key_proj], axis=1)
+            value = paddle.concat([value, encoder_hidden_states_value_proj], axis=1)
+
         hidden_states = hidden_states = F.scaled_dot_product_attention_(
             query, key, value, dropout_p=0.0, is_causal=False
         )
         hidden_states = hidden_states.reshape([batch_size, -1, attn.heads * head_dim])
         hidden_states = hidden_states.astype(query.dtype)
 
-        # Split the attention outputs.
-        hidden_states, encoder_hidden_states = (
-            hidden_states[:, : residual.shape[1]],
-            hidden_states[:, residual.shape[1] :],
-        )
+        if encoder_hidden_states is not None:
+            # Split the attention outputs.
+            hidden_states, encoder_hidden_states = (
+                hidden_states[:, : residual.shape[1]],
+                hidden_states[:, residual.shape[1] :],
+            )
+            if not attn.context_pre_only:
+                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
-        if not attn.context_pre_only:
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose([0, 1, 3, 2]).reshape([batch_size, channel, height, width])
-        if context_input_ndim == 4:
-            encoder_hidden_states = encoder_hidden_states.transpose([0, 1, 3, 2]).reshape([batch_size, channel, height, width])
-
-        return hidden_states, encoder_hidden_states
+        if encoder_hidden_states is not None:
+            return hidden_states, encoder_hidden_states
+        else:
+            return hidden_states
 
 
 class FusedJointAttnProcessor2_5:
