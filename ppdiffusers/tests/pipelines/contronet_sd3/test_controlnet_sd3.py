@@ -270,7 +270,7 @@ class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
 
     def test_tile(self):
-        controlnet = SD3ControlNetModel.from_pretrained("InstantX//SD3-Controlnet-Tile", paddle_dtype=paddle.float16)
+        controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Tile", paddle_dtype=paddle.float16)
         pipe = StableDiffusion3ControlNetPipeline.from_pretrained(
             "stabilityai/stable-diffusion-3-medium-diffusers", controlnet=controlnet, paddle_dtype=paddle.float16
         )
