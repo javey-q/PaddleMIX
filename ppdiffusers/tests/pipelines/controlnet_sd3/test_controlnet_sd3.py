@@ -36,11 +36,13 @@ from ppdiffusers.utils.testing_utils import (
 )
 from ppdiffusers.utils import randn_tensor
 
+from ..test_pipelines_common import PipelineTesterMixin
+
 
 enable_full_determinism()
 
 
-class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase):
+class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = StableDiffusion3ControlNetPipeline
     params = frozenset(
         [
