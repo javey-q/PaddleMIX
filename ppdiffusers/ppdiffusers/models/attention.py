@@ -161,9 +161,9 @@ class JointTransformerBlock(nn.Layer):
             self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=None,
-                dim_head=attention_head_dim,
+                dim_head=attention_head_dim // num_attention_heads,
                 heads=num_attention_heads,
-                out_dim=dim,
+                out_dim=attention_head_dim,
                 bias=True,
                 processor=processor,
                 qk_norm=qk_norm,

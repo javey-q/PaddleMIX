@@ -168,8 +168,8 @@ class Attention(nn.Layer):
         #     self.norm_q = nn.LayerNorm(dim_head * heads, eps=eps)
         #     self.norm_k = nn.LayerNorm(dim_head * kv_heads, eps=eps)
         elif qk_norm == "rms_norm":
-            self.norm_q = RMSNorm(dim_head, eps=eps)
-            self.norm_k = RMSNorm(dim_head, eps=eps)
+            self.norm_q = RMSNorm(dim_head, epsilon=eps)
+            self.norm_k = RMSNorm(dim_head, epsilon=eps)
         # elif qk_norm == "l2":
         #     self.norm_q = LpNorm(p=2, dim=-1, eps=eps)
         #     self.norm_k = LpNorm(p=2, dim=-1, eps=eps)
@@ -226,6 +226,22 @@ class Attention(nn.Layer):
 
         if self.context_pre_only is not None and not self.context_pre_only:
             self.to_add_out = nn.Linear(self.inner_dim, self.out_dim, bias_attr=out_bias)
+
+        if qk_norm is not None and added_kv_proj_dim is not None:
+            if qk_norm == "fp32_layer_norm":
+                self.norm_added_q = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+                self.norm_added_k = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
+            elif qk_norm == "rms_norm":
+                self.norm_added_q = RMSNorm(dim_head, epsilon=eps)
+                self.norm_added_k = RMSNorm(dim_head, epsilon=eps)
+            else:
+                raise ValueError(
+                    f"unknown qk_norm: {qk_norm}. Should be one of `None,'layer_norm','fp32_layer_norm','rms_norm'`"
+                )
+        else:
+            self.norm_added_q = None
+            self.norm_added_k = None
+
         # set attention processor
         # We use the AttnProcessor2_5 by default when paddle 2.5 is used which uses
         # paddle.nn.functional.scaled_dot_product_attention_ for native Flash/memory_efficient_attention
@@ -965,9 +981,9 @@ class JointAttnProcessor2_5:
         value = value.reshape([batch_size, -1, attn.heads, head_dim])
 
         if attn.norm_q is not None:
-            query = attn.norm_q(query)
+            query = attn.norm_q(query, begin_norm_axis=3)
         if attn.norm_k is not None:
-            key = attn.norm_k(key)
+            key = attn.norm_k(key, begin_norm_axis=3)
 
         # `context` projections.
         if encoder_hidden_states is not None:
@@ -980,9 +996,9 @@ class JointAttnProcessor2_5:
             encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.reshape([batch_size, -1, attn.heads, head_dim])
 
             if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj, begin_norm_axis=3)
             if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj, begin_norm_axis=3)
 
             query = paddle.concat([query, encoder_hidden_states_query_proj], axis=1)
             key = paddle.concat([key, encoder_hidden_states_key_proj], axis=1)
