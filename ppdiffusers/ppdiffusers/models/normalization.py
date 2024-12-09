@@ -18,6 +18,7 @@ from typing import Dict, Optional, Tuple
 
 import paddle
 import paddle.nn as nn
+import paddle.nn.functional as F
 
 from .activations import get_activation
 from .embeddings import CombinedTimestepLabelEmbeddings, CombinedTimestepSizeEmbeddings
@@ -45,6 +46,18 @@ class AdaLayerNorm(nn.Layer):
         scale, shift = paddle.chunk(emb, 2)
         x = self.norm(x) * (1 + scale) + shift
         return x
+
+
+class FP32LayerNorm(nn.LayerNorm):
+    def forward(self, inputs: paddle.Tensor) -> paddle.Tensor:
+        origin_dtype = inputs.dtype
+        return F.layer_norm(
+            inputs.astype('float32'),
+            normalized_shape=self._normalized_shape,
+            weight=self.weight.astype('float32') if self.weight is not None else None,
+            bias=self.bias.astype('float32') if self.bias is not None else None,
+            epsilon=self._epsilon,
+        ).astype(origin_dtype)
 
 
 class SD35AdaLayerNormZeroX(nn.Layer):
@@ -258,4 +271,16 @@ class RMSNorm(nn.Layer):
             norm_bias=None,
             epsilon=self.epsilon,
             begin_norm_axis=begin_norm_axis,
-        )
+        )[0]
+
+
+class LpNorm(nn.Module):
+    def __init__(self, p: int = 2, axis: int = -1, epsilon: float = 1e-12):
+        super().__init__()
+
+        self.p = p
+        self.axis = axis
+        self.epsilon = epsilon
+
+    def forward(self, hidden_states: paddle.Tensor) -> paddle.Tensor:
+        return F.normalize(hidden_states, p=self.p, axis=self.dim, epsilon=self.eps)

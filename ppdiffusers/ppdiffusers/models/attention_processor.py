@@ -84,6 +84,7 @@ class Attention(nn.Layer):
         query_dim: int,
         cross_attention_dim: Optional[int] = None,
         heads: int = 8,
+        kv_heads: Optional[int] = None,
         dim_head: int = 64,
         dropout: float = 0.0,
         bias: bool = False,
@@ -105,11 +106,12 @@ class Attention(nn.Layer):
         processor: Optional["AttnProcessor"] = None,
         out_dim: int = None,
         context_pre_only=None,
+        elementwise_affine: bool = True,
     ):
         super().__init__()
 
         # To prevent circular import.
-        from .normalization import  RMSNorm  # FP32LayerNorm, LpNorm
+        from .normalization import  RMSNorm, FP32LayerNorm, LpNorm
 
         self.inner_dim = dim_head * heads
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
@@ -157,22 +159,24 @@ class Attention(nn.Layer):
         if qk_norm is None:
             self.norm_q = None
             self.norm_k = None
-        # elif qk_norm == "layer_norm":
-        #     self.norm_q = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
-        #     self.norm_k = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
-        # elif qk_norm == "fp32_layer_norm":
-        #     self.norm_q = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
-        #     self.norm_k = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
-        # elif qk_norm == "layer_norm_across_heads":
-        #     # Lumina applys qk norm across all heads
-        #     self.norm_q = nn.LayerNorm(dim_head * heads, eps=eps)
-        #     self.norm_k = nn.LayerNorm(dim_head * kv_heads, eps=eps)
+        elif qk_norm == "layer_norm":
+            norm_elementwise_affine_kwargs = dict(weight_attr=elementwise_affine, bias_attr=elementwise_affine)
+            self.norm_q = nn.LayerNorm(dim_head, epsilon=eps, **norm_elementwise_affine_kwargs)
+            self.norm_k = nn.LayerNorm(dim_head, epsilon=eps, **norm_elementwise_affine_kwargs)
+        elif qk_norm == "fp32_layer_norm":
+            norm_elementwise_affine_kwargs = dict(weight_attr=False, bias_attr=False)
+            self.norm_q = FP32LayerNorm(dim_head, epsilon=eps, **norm_elementwise_affine_kwargs)
+            self.norm_k = FP32LayerNorm(dim_head, epsilon=eps, **norm_elementwise_affine_kwargs)
+        elif qk_norm == "layer_norm_across_heads":
+            # Lumina applys qk norm across all heads
+            self.norm_q = nn.LayerNorm(dim_head * heads, epsilon=eps)
+            self.norm_k = nn.LayerNorm(dim_head * kv_heads, epsilon=eps)
         elif qk_norm == "rms_norm":
             self.norm_q = RMSNorm(dim_head, epsilon=eps)
             self.norm_k = RMSNorm(dim_head, epsilon=eps)
-        # elif qk_norm == "l2":
-        #     self.norm_q = LpNorm(p=2, dim=-1, eps=eps)
-        #     self.norm_k = LpNorm(p=2, dim=-1, eps=eps)
+        elif qk_norm == "l2":
+            self.norm_q = LpNorm(p=2, dim=-1, epsilon=eps)
+            self.norm_k = LpNorm(p=2, dim=-1, epsilon=eps)
         else:
             raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None,'layer_norm','fp32_layer_norm','rms_norm'")
         
