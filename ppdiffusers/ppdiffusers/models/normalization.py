@@ -229,7 +229,7 @@ class AdaLayerNormContinuous(nn.Layer):
         self.silu = nn.Silu()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias_attr=bias)
         if norm_type == "layer_norm":
-            self.norm = nn.LayerNorm(embedding_dim, eps, weight_attr=elementwise_affine, bias_attr=bias)
+            self.norm = nn.LayerNorm(embedding_dim, eps, weight_attr=elementwise_affine, bias_attr=bias if elementwise_affine else False)
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps, elementwise_affine)
         else:
