@@ -17,7 +17,7 @@ Stable Diffusion 3 主要包含以下模块：
 - scheduler：理论上采用了 Flow Matching 的技术，所以换成了 Flow Matching 的欧拉采样器
 - vae：依然采用 VAE 将 image 编码到隐空间 latent
 
-<img src="images/sd3-3.jpg">
+<img src="images/sd3-3.png">
 
 ### Text Encoder模型
 
@@ -84,7 +84,7 @@ MM-DiT在继承DiT核心设计理念的基础上进行了扩展，以更好地�
 
   **而在MM-DiT中，Text Embeddings和图像的Patch Embeddings 分别经过Linear层得到Q、K、V之后，二者对应的Q、K、V会拼接到一起进行注意力操作，然后再将激活值拆分回到原本各自的分支。**这意味着文本和图像特征可以在共享的注意力空间中直接交互。
 
-<img src="images/sd3-3.png">
+<img src="images/sd3-4.png">
 
 
 
