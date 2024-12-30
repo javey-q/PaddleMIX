@@ -7,6 +7,8 @@ Stable Diffusion 3（SD3）是一种多模态扩散Transformer（MMDiT）文本�
 1. **训练目标优化**：采用 改进的 Flow Matching(FM) 技术替代原先DDPM中的训练目标，提升了训练效果。
 2. **去噪模型升级**：将去噪模型从U-Net更换为更适合处理多模态信息的MM-DiT，增强了模型的多模态处理能力。
 
+PPDiffusers 针对 SD3 进行了全方位优化，实现了高性能推理加速，并支持多卡分布式推理。经测试，相比业界主流的 TensorRT 解决方案，性能提升达 25.9%。此外，PPDiffusers 还完成了对国产芯片的适配，为用户提供更灵活的部署选择。
+
 ## SD3 模型结构
 
 Stable Diffusion 3 主要包含以下模块：
